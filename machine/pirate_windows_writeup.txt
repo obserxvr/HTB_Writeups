@@ -76,7 +76,5 @@ proxychains secretsdump.py -k -no-pass dc01.pirate.htb
 
 
 cat user.txt
-0dbd5b10c68c901865afc44e0aa9f319
 
 *Evil-WinRM* PS C:\Users\Administrator\Desktop> cat root.txt
-a6855e6bf49734e515709736158d0369
