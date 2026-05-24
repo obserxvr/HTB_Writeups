@@ -1,0 +1,12 @@
+1. I discovered 2 ports were open 22 and 3000
+2. Accessing port 3000 which is a next.js website ( REACTOR WATCH 3.2.1 )
+3. After some recon I found out that the next.js version used was 15.0.3 which is vulernable to CVE-2025-55182
+4. After getting the reverse shell using this GITHUB REPO - https://github.com/W41T3D3V1L/COMPLETE-CVE-2025-55182, I found a reactor.db and after dumping all the data, we get two md5 hashes and only one was decrypted
+5. Using the cracked hash password , I ssh to the VM as engineer 
+6. During enumeration ,I found that a process running as root exposed the Node.js V8 Inspector Protocol on localhost without authentication, Access to that port permits arbitrary javascript execution within the root process context
+7. To achieve local privilege escalation, I forwarded Port 9229 to my machine, using the command 
+ssh -L 9229:127.0.0.1:9229 engineer@10.129.253.206
+8. Opened chrome://inspect and added the 127.0.0.1:9229 to Discover network targets and enabled port forwarding 
+9. I selected inspect under the detected node.js target ( /opt/uptime-monitor/worker.js
+file:///opt/uptime-monitor/worker.js ) and in the DevTools console entered the following js code require('child_process').exec('chmod +s /bin/bash')
+10. Returning back to the ssh terminal I entered /bin/bash -p and I had the root shell.

