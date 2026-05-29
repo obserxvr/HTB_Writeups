@@ -1,0 +1,61 @@
+HTB - Kernel Monarch Writeup
+Step 1: Reverse Engineer the Kernel Module
+
+Load malware.ko into Ghidra and identify the module initialization and hook installation routines.
+
+Analysis shows the module:
+
+Hides itself from module listings
+Uses ftrace-based syscall hooks
+Hooks read, write, and syslog-related functions
+
+The fake flag printed during initialization:
+
+HTB{f4k3_fl4g_f0r_r3v3rs1ng_0nly}
+
+indicates that a real flag is hidden elsewhere.
+
+Step 2: Identify the Target of the Rootkit
+
+Analysis of hook_read() reveals that the rootkit filters data returned from several kernel information sources.
+
+Particularly important are the hooks involving:
+
+__x64_sys_syslog
+__ia32_sys_syslog
+do_syslog
+
+These functions are responsible for access to kernel log data.
+
+This suggests the rootkit is hiding information from users reading kernel messages.
+
+Step 3: Formulate a Hypothesis
+
+Since the rootkit actively intercepts syslog-related operations, it is reasonable to assume that the real flag is stored inside the kernel message buffer and removed before reaching userspace.
+
+The challenge therefore becomes:
+
+How can kernel logs be accessed without using the monitored path?
+
+Step 4: Creating an Alternative Interface
+
+Alternatively, a new node can be created manually:
+
+mknod /tmp/monarch c 1 11
+
+This creates another interface to the kernel message buffer pointing to /dev/kmsg. 
+
+Step 5: Read the Kernel Log Through the Alternate Node
+
+Reading from the alternate device:
+
+cat /tmp/monarch
+
+reveals the hidden log entry:
+
+HTB{REDACTED}
+
+The rootkit focused on hiding information through the standard syslog access path, but the kernel message buffer remained accessible through another device node, allowing the flag to be recovered.
+
+Flag
+HTB{REDACTED}
