@@ -43,7 +43,7 @@ Alternatively, a new node can be created manually:
 
 mknod /tmp/monarch c 1 11
 
-This creates another interface to the kernel message buffer pointing to /dev/kmsg. 
+This creates another interface to the kernel message buffer pointing to kernel's log buffer which is a character device( Major 1, Minor 11 ) 
 
 Step 5: Read the Kernel Log Through the Alternate Node
 
